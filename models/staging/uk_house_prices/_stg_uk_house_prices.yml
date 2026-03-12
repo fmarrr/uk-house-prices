@@ -1,0 +1,56 @@
+version: 2
+
+models:
+  - name: stg_uk_house_prices__price_paid
+    description: Cleaned and renamed Land Registry Price Paid Data. Each row is one residential property sale.
+    columns:
+      - name: transaction_id
+        description: Unique identifier for each property sale.
+        data_tests:
+          - unique
+          - not_null
+      - name: sale_price_gbp
+        description: Sale price in GBP as stated on the transfer deed.
+        data_tests:
+          - not_null
+      - name: sale_date
+        description: Date the sale completed.
+        data_tests:
+          - not_null
+      - name: sale_year
+        description: Year extracted from sale_date.
+      - name: sale_month
+        description: Month extracted from sale_date.
+      - name: postcode
+        description: Postcode of the property.
+      - name: property_type
+        description: "One of: Detached, Semi-Detached, Terraced, Flat/Maisonette, Other."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Detached', 'Semi-Detached', 'Terraced', 'Flat/Maisonette', 'Other']
+      - name: build_status
+        description: "New Build or Established."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['New Build', 'Established']
+      - name: tenure
+        description: "Freehold or Leasehold."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Freehold', 'Leasehold']
+      - name: flat_number
+        description: Secondary addressable object name (flat/apartment number).
+      - name: house_number_or_name
+        description: Primary addressable object name.
+      - name: street
+      - name: locality
+      - name: town_city
+      - name: district
+      - name: county
+      - name: ppd_category
+        description: "Standard (arms-length) or Additional (e.g. buy-to-let, right-to-buy)."
+      - name: record_status
+        description: A=Addition, C=Change. Deleted records are excluded.

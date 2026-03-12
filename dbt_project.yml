@@ -1,0 +1,27 @@
+name: uk_house_prices
+
+profile: uk_house_prices
+
+seed-paths: ["seeds"]
+model-paths: ["models"]
+macro-paths: ["macros"]
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+seeds:
+  # Builds seeds into '<your_schema_name>_raw'
+  uk_house_prices:
+    +schema: raw
+
+models:
+  uk_house_prices:
+    staging:
+      +materialized: view
+    intermediate:
+      +materialized: view
+    marts:
+      +materialized: table
+      uk_house_prices:
+        mart_market_activity:
+          +materialized: incremental

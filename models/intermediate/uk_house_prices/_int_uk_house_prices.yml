@@ -1,0 +1,43 @@
+version: 2
+
+models:
+  - name: int_price_paid__enriched
+    description: >
+      Each transaction enriched with ONS region, local authority, and derived flags
+      (is_london, is_new_build, price_band). Left-joins the postcode lookup so rows
+      are never dropped if a postcode is missing from the reference table.
+    columns:
+      - name: transaction_id
+        data_tests:
+          - unique
+          - not_null
+      - name: sale_price_gbp
+        data_tests:
+          - not_null
+      - name: region
+        description: ONS region from postcode lookup. Defaults to 'Unknown' when unmatched.
+      - name: price_band
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - 'Under £100k'
+                  - '£100k–£250k'
+                  - '£250k–£500k'
+                  - '£500k–£1m'
+                  - 'Over £1m'
+
+  - name: int_price_paid__monthly
+    description: >
+      Transactions rolled up to a monthly grain by region, county, property type,
+      build status, and tenure. Pre-computes counts and price statistics so that
+      marts only need to apply window functions, not raw aggregations.
+    columns:
+      - name: month_start_date
+        data_tests:
+          - not_null
+      - name: transaction_count
+        description: Number of sales in the group for the month.
+        data_tests:
+          - not_null

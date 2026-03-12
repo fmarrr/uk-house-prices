@@ -1,0 +1,10 @@
+dbt_packages/
+dbt_internal_packages/
+logs/
+target/
+.env
+*.env
+profiles.yml
+.user.yml
+# inline query scratch files
+inline_*.sql
