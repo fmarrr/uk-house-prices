@@ -8,3 +8,7 @@ profiles.yml
 .user.yml
 # inline query scratch files
 inline_*.sql
+# GCP service account keys
+*.json
+# macOS
+.DS_Store

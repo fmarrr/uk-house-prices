@@ -158,88 +158,106 @@ models:
 
 
   # ---------------------------------------------------------------------------
-  # mart_price_trends — annual price trends with YoY and rolling average
-  # Grain: sale_year + region + property_type + tenure
+  # mart_price_trends — YoY price trends at street level
+  # Grain: sale_year + street + postcode_sector + county
   # ---------------------------------------------------------------------------
   - name: mart_price_trends
     description: >
-      Annual average and median prices by region, property type, and tenure with
-      year-on-year percentage change and a 3-year rolling average. Built from
-      int_price_paid__monthly so no raw aggregations happen here.
+      Year-on-year price change at street level, built on mart_street_yearly_prices.
+      postcode_sector + street identifies the location where postcode is known;
+      county + town_city + street is used as fallback where postcode is missing.
+      YoY is calculated on the forward-filled price so gap years show flat change.
     columns:
       - name: sale_year
-        description: Year of aggregation.
         data_tests:
           - not_null
           - dbt_utils.expression_is_true:
               arguments:
                 expression: ">= 1995"
 
-      - name: region
-        description: ONS region.
+      - name: street
         data_tests:
           - not_null
 
-      - name: property_type
+      - name: county
         data_tests:
           - not_null
-          - accepted_values:
-              arguments:
-                values: ['Detached', 'Semi-Detached', 'Terraced', 'Flat/Maisonette', 'Other']
 
-      - name: tenure
-        data_tests:
-          - not_null
-          - accepted_values:
-              arguments:
-                values: ['Freehold', 'Leasehold']
-
-      - name: annual_transaction_count
-        description: Total number of sales in the year for this partition.
+      - name: avg_sale_price_gbp_filled
         data_tests:
           - not_null
           - dbt_utils.expression_is_true:
               arguments:
                 expression: "> 0"
 
-      - name: avg_sale_price_gbp
-        description: Average sale price across all months in the year.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - sale_year
+              - street
+              - postcode_sector
+              - county
+      # YoY swings beyond ±100% in a single year would be anomalous
+      - dbt_utils.expression_is_true:
+          name: mart_price_trends_yoy_change_not_extreme
+          arguments:
+            expression: "yoy_avg_price_change_pct between -100 and 500"
+          config:
+            where: "yoy_avg_price_change_pct is not null"
+
+
+  # ---------------------------------------------------------------------------
+  # mart_street_yearly_prices — yearly sale price per street with gap fill
+  # Grain: sale_year + street + postcode_sector + county
+  # ---------------------------------------------------------------------------
+  - name: mart_street_yearly_prices
+    description: >
+      Yearly average sale price per street, identified by street name and postcode
+      sector (e.g. 'SW1A 1'). Gap years with no sales are forward-filled using
+      the most recent known average. transaction_count = 0 and raw price columns
+      are null for filled gap rows. Filter by postcode_sector to look up streets
+      in an area.
+    columns:
+      - name: sale_year
+        data_tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 1995"
+
+      - name: street
+        data_tests:
+          - not_null
+
+      - name: postcode_sector
+        description: First characters of postcode excluding last 2 (e.g. 'SW1A 1').
+        data_tests:
+          - not_null
+
+      - name: transaction_count
+        description: Number of sales in the year. 0 for forward-filled gap years.
+        data_tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+
+      - name: avg_sale_price_gbp_filled
+        description: Average sale price; carried forward from prior year when transaction_count = 0.
         data_tests:
           - not_null
           - dbt_utils.expression_is_true:
               arguments:
                 expression: "> 0"
 
-      - name: avg_median_sale_price_gbp
-        description: Average of monthly medians (weighted median approximation).
+      - name: median_sale_price_gbp_filled
+        description: Median sale price; carried forward from prior year when transaction_count = 0.
         data_tests:
+          - not_null
           - dbt_utils.expression_is_true:
               arguments:
                 expression: "> 0"
-              config:
-                where: "avg_median_sale_price_gbp is not null"
-
-      - name: yoy_avg_price_change_pct
-        description: >
-          Year-on-year % change in average sale price within the partition.
-          Null for the first year of each partition.
-        data_tests:
-          # YoY swings beyond ±80% in a single year would be data anomalies
-          - dbt_utils.expression_is_true:
-              name: mart_price_trends_yoy_change_not_extreme
-              arguments:
-                expression: "between -80 and 200"
-              config:
-                where: "yoy_avg_price_change_pct is not null"
-
-      - name: rolling_3yr_avg_price_gbp
-        description: 3-year rolling average of avg_sale_price_gbp.
-        data_tests:
-          - dbt_utils.expression_is_true:
-              arguments:
-                expression: "> 0"
-              config:
-                where: "rolling_3yr_avg_price_gbp is not null"
 
     data_tests:
       # Compound unique key
@@ -247,153 +265,34 @@ models:
           arguments:
             combination_of_columns:
               - sale_year
-              - region
-              - property_type
-              - tenure
-      # Rolling 3yr average should be within 50% of the annual average
+              - street
+              - postcode_sector
+      # Filled price must equal actual price when a sale occurred
       - dbt_utils.expression_is_true:
-          name: mart_price_trends_rolling_avg_near_annual_avg
+          name: mart_street_yearly_prices_filled_matches_actual
           arguments:
-            expression: >
-              rolling_3yr_avg_price_gbp between avg_sale_price_gbp * 0.5
-                                            and avg_sale_price_gbp * 1.5
+            expression: "avg_sale_price_gbp_filled = round(avg_sale_price_gbp, 10)"
           config:
-            where: "rolling_3yr_avg_price_gbp is not null"
-
-
-  # ---------------------------------------------------------------------------
-  # mart_market_activity — monthly volume with rolling metrics (incremental)
-  # Grain: month_start_date + region + property_type
-  # ---------------------------------------------------------------------------
-  - name: mart_market_activity
-    description: >
-      Monthly market activity per region and property type. Incremental model —
-      new months are appended without full refresh. Includes rolling 12-month
-      volume and 3-month rolling average price.
-    columns:
-      - name: month_start_date
-        description: First day of the month. Used as the time-series key.
-        data_tests:
-          - not_null
-
-      - name: sale_year
-        data_tests:
-          - not_null
-          - dbt_utils.expression_is_true:
-              arguments:
-                expression: ">= 1995"
-
-      - name: sale_month
-        data_tests:
-          - not_null
-          - dbt_utils.expression_is_true:
-              arguments:
-                expression: "between 1 and 12"
-
-      - name: region
-        data_tests:
-          - not_null
-
-      - name: property_type
-        data_tests:
-          - not_null
-          - accepted_values:
-              arguments:
-                values: ['Detached', 'Semi-Detached', 'Terraced', 'Flat/Maisonette', 'Other']
-
-      - name: transaction_count
-        description: Number of sales in this month/region/property_type.
-        data_tests:
-          - not_null
-          - dbt_utils.expression_is_true:
-              arguments:
-                expression: "> 0"
-
-      - name: avg_sale_price_gbp
-        data_tests:
-          - not_null
-          - dbt_utils.expression_is_true:
-              arguments:
-                expression: "> 0"
-
-      - name: new_build_count
-        data_tests:
-          - not_null
-          - dbt_utils.expression_is_true:
-              arguments:
-                expression: ">= 0"
-
-      - name: established_count
-        data_tests:
-          - not_null
-          - dbt_utils.expression_is_true:
-              arguments:
-                expression: ">= 0"
-
-      - name: rolling_12m_transaction_count
-        description: Sum of transactions over the trailing 12 months.
-        data_tests:
-          - not_null
-          - dbt_utils.expression_is_true:
-              name: mart_market_activity_rolling_12m_gte_monthly
-              arguments:
-                expression: ">= transaction_count"
-
-      - name: rolling_3m_avg_price_gbp
-        description: 3-month rolling average price (smooths seasonal noise).
-        data_tests:
-          - dbt_utils.expression_is_true:
-              arguments:
-                expression: "> 0"
-              config:
-                where: "rolling_3m_avg_price_gbp is not null"
-
-      - name: mom_volume_change_pct
-        description: Month-on-month % change in transaction count. Null for first month.
-        data_tests:
-          - dbt_utils.expression_is_true:
-              name: mart_market_activity_mom_change_not_extreme
-              arguments:
-                expression: "between -100 and 500"
-              config:
-                where: "mom_volume_change_pct is not null"
-
-    data_tests:
-      # Compound unique key
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns:
-              - month_start_date
-              - region
-              - property_type
-      # new_build + established must sum to the total
+            where: "transaction_count > 0"
+      # Gap rows must have null raw prices and zero transaction count
       - dbt_utils.expression_is_true:
-          name: mart_market_activity_build_status_counts_sum_to_total
+          name: mart_street_yearly_prices_gap_rows_have_null_prices
           arguments:
-            expression: "new_build_count + established_count = transaction_count"
-      # month_start_date must be the first of the month
-      - dbt_utils.expression_is_true:
-          name: mart_market_activity_month_start_is_first_of_month
-          arguments:
-            expression: "day(month_start_date) = 1"
-      # month_start_date must be consistent with sale_year and sale_month
-      - dbt_utils.expression_is_true:
-          name: mart_market_activity_date_year_month_consistent
-          arguments:
-            expression: >
-              year(month_start_date) = sale_year
-              and month(month_start_date) = sale_month
+            expression: "avg_sale_price_gbp is null and transaction_count = 0"
+          config:
+            where: "transaction_count = 0"
 
 
   # ---------------------------------------------------------------------------
   # mart_newbuild_premium — annual new build vs established price premium
-  # Grain: sale_year + region + county + property_type
+  # Grain: sale_year + street + postcode_sector + county + town_city + property_type
   # ---------------------------------------------------------------------------
   - name: mart_newbuild_premium
     description: >
-      Annual new build price premium over established properties by region, county,
-      and property type. Only rows where both new build and established sales exist
-      are included. Reports absolute (£) and percentage premium.
+      Annual new build price premium over established properties at street level.
+      postcode_sector is null where postcode is missing; county + town_city + street
+      identifies the location in that case. Only rows where both new build and
+      established sales exist are included. Reports absolute (£) and percentage premium.
     columns:
       - name: sale_year
         data_tests:
@@ -402,7 +301,7 @@ models:
               arguments:
                 expression: ">= 1995"
 
-      - name: region
+      - name: street
         data_tests:
           - not_null
 
@@ -489,7 +388,8 @@ models:
           arguments:
             combination_of_columns:
               - sale_year
-              - region
+              - street
+              - postcode_sector
               - county
               - property_type
       # avg_premium_gbp must equal rounded difference of avg prices (within £1 rounding)

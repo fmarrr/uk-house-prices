@@ -28,16 +28,3 @@ models:
                   - '£500k–£1m'
                   - 'Over £1m'
 
-  - name: int_price_paid__monthly
-    description: >
-      Transactions rolled up to a monthly grain by region, county, property type,
-      build status, and tenure. Pre-computes counts and price statistics so that
-      marts only need to apply window functions, not raw aggregations.
-    columns:
-      - name: month_start_date
-        data_tests:
-          - not_null
-      - name: transaction_count
-        description: Number of sales in the group for the month.
-        data_tests:
-          - not_null

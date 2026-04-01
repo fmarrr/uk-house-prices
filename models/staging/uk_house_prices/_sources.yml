@@ -3,10 +3,11 @@ version: 2
 sources:
   - name: uk_house_prices
     description: UK Land Registry Price Paid Data (PPD)
-    database: HOUSE_PRICES
+    database: uk-house-prices-491810
     schema: raw
     tables:
-      - name: price_paid
+      - name: price_paid_all
+        identifier: price_paid_all
         description: >
           Residential property sales in England and Wales submitted to HM Land Registry
           for registration. Covers sales since January 1995.
@@ -15,13 +16,13 @@ sources:
             description: Reference number generated automatically recording each published sale. The same as a Unique Transaction Identifier (UTI).
           - name: price
             description: Sale price stated on the transfer deed.
-          - name: date_of_transfer
+          - name: transfer_date
             description: Date when the sale was completed, as stated on the transfer deed.
           - name: postcode
             description: Postcode of the property.
           - name: property_type
             description: "D=Detached, S=Semi-Detached, T=Terraced, F=Flats/Maisonettes, O=Other."
-          - name: old_or_new
+          - name: old_new
             description: "Y=newly built, N=established residential building."
           - name: duration
             description: "F=Freehold, L=Leasehold."
@@ -31,7 +32,7 @@ sources:
             description: Secondary Addressable Object Name (flat/apartment number).
           - name: street
           - name: locality
-          - name: town_city
+          - name: town
           - name: district
           - name: county
           - name: ppd_category

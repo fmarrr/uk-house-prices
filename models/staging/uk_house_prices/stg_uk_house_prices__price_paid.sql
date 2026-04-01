@@ -1,6 +1,6 @@
 with source as (
 
-    select * from {{ source('uk_house_prices', 'price_paid') }}
+    select * from {{ source('uk_house_prices', 'price_paid_all') }}
 
 ),
 
@@ -9,9 +9,9 @@ renamed as (
     select
         transaction_id,
         price                                       as sale_price_gbp,
-        cast(date_of_transfer as date)              as sale_date,
-        year(cast(date_of_transfer as date))        as sale_year,
-        month(cast(date_of_transfer as date))       as sale_month,
+        cast(substr(transfer_date, 1, 10) as date)      as sale_date,
+        extract(year  from cast(substr(transfer_date, 1, 10) as date)) as sale_year,
+        extract(month from cast(substr(transfer_date, 1, 10) as date)) as sale_month,
 
         -- Property details
         postcode,
@@ -22,7 +22,7 @@ renamed as (
             when 'F' then 'Flat/Maisonette'
             when 'O' then 'Other'
         end                                         as property_type,
-        case old_or_new
+        case old_new
             when 'Y' then 'New Build'
             when 'N' then 'Established'
         end                                         as build_status,
@@ -36,7 +36,7 @@ renamed as (
         nullif(paon, '')                            as house_number_or_name,
         nullif(street, '')                          as street,
         nullif(locality, '')                        as locality,
-        nullif(town_city, '')                       as town_city,
+        nullif(town, '')                            as town_city,
         nullif(district, '')                        as district,
         nullif(county, '')                          as county,
 
